@@ -1,1 +1,18 @@
-const CACHE='bramwood-living-v05';const ASSETS=['./','./index.html','./engine.js','./app.js','./world.js','./styles.css','./manifest.webmanifest','./icon.svg'];self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||new URL(e.request.url).origin!==location.origin)return;e.respondWith(caches.match(e.request).then(c=>c||fetch(e.request).then(r=>{if(r.ok){const copy=r.clone();caches.open(CACHE).then(cache=>cache.put(e.request,copy));}return r;})));});
+// Bramwood v0.5.1: the whole application lives in index.html.
+const CACHE='bramwood-living-v051';
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE).then(cache => cache.add('./index.html')).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k=>k.startsWith('bramwood-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));
+});
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if(request.method!=='GET'||new URL(request.url).origin!==self.location.origin)return;
+  if(request.mode==='navigate') {
+    event.respondWith(fetch(request).then(response=>{
+      if(response.ok){const clone=response.clone();event.waitUntil(caches.open(CACHE).then(cache=>cache.put('./index.html',clone)));}
+      return response;
+    }).catch(()=>caches.match('./index.html')));
+  }
+});
