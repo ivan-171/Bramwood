@@ -1,123 +1,75 @@
-'use strict';
-const E = window.BramwoodEngine;
-const SAVE = 'bramwood_save_v3';
-const LEGACY = ['bramwood_save_v2','bramwood_v01'];
-let tab = 'council';
-let notice = '';
+import {VERSION,RESOURCE_NAMES,BUILDINGS,FOCI,EDICTS,SEASON_NAMES,newGame,seasonOf,yearOf,dayOfSeason,capacity,foodCapacity,dailyEstimate,riskLevel,eventInfo,decide,construct,setFocus,setEdict,advance,objective,achievements,validateSave,endingDescription,EVENT_COUNT} from './engine.js';
+import {VillageWorld, weatherForDay, BUILDING_SLOTS} from './world.js';
 
-const q = id => document.getElementById(id);
-function safeGet(k){try{return localStorage.getItem(k)}catch(_){return null}}
-function safeSet(k,v){try{localStorage.setItem(k,v);return true}catch(_){return false}}
-function safeRemove(k){try{localStorage.removeItem(k)}catch(_){}}
-function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-
-function loadGame(){
-  const keys=[SAVE,...LEGACY];
-  for(const key of keys){const raw=safeGet(key);if(!raw)continue;const p=E.importState(raw);if(p.ok){if(key!==SAVE)safeSet(SAVE,JSON.stringify(p.state));return p.state;}}
-  return E.createBaseState(Date.now());
+const KEY=`bramwood-save-v${VERSION}`;
+const $=id=>document.getElementById(id);
+const escapeHtml=(value)=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+let state;
+let world;
+let activeTab='aldea';
+let toastTimer;
+const PRIOR_KEY='bramwood-save-v3';
+const ico={food:'◈',wood:'♧',stone:'◆',gold:'✦',herbs:'❧'};
+const int=n=>new Intl.NumberFormat('es-ES').format(n);
+function openSave(){try{const raw=localStorage.getItem(KEY);return raw?validateSave(JSON.parse(raw)):newGame();}catch(e){console.warn('Guardado no disponible:',e);return newGame();}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('save-status').textContent='● Guardado local';}catch(e){$('save-status').textContent='⚠ Sin guardado';}}
+function notify(message){const t=$('toast');t.textContent=message;t.classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('visible'),3600);}
+function apply(action){const before=state?{day:state.day,population:state.population,resources:{...state.resources},stats:{...state.stats},journal:state.journal.map(j=>j.day+':'+j.title)}:null;let result;try{result=action(state);}catch(e){console.error(e);notify('Error inesperado. Prueba a recargar.');return;}if(result.ok){save();render();if(result.progressed)renderDayRecap(before,result);if(result.message)notify(result.message);}else notify(result.message||'Acción no disponible.');}
+function setTab(tab){if(!$(tab))return;activeTab=tab;document.querySelectorAll('.tab').forEach(el=>{el.classList.toggle('active',el.dataset.tab===tab);if(el.dataset.tab===tab)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});document.querySelectorAll('.tab-content').forEach(el=>el.classList.toggle('active',el.id===tab));window.scrollTo({top:Math.max(0,document.querySelector('.tabs').getBoundingClientRect().top+window.scrollY-6),behavior:'smooth'});}
+function labelCost(cost){const keys=Object.entries(cost||{});return keys.map(([k,v])=>`${ico[k]||''} ${v} ${RESOURCE_NAMES[k]||k}`).join(' · ');}
+function renderResources(){const d=dailyEstimate(state);const list=[['food','Comida'],['wood','Madera'],['stone','Piedra'],['gold','Coronas'],['herbs','Hierbas']];let html=list.map(([key,name])=>{const val=state.resources[key];const rate=key in d?d[key]:null;return `<div class="resource"><div class="resource-top"><span>${name}</span><span class="resource-symbol">${ico[key]}</span></div><div class="resource-value">${int(val)}</div><div class="resource-rate ${rate!==null&&rate<0?'negative':''}">${rate===null?'Reservas':(rate>0?'+':'')+rate+' / día'}</div></div>`;}).join('');html+=`<div class="resource"><div class="resource-top"><span>Habitantes</span><span class="resource-symbol">♟</span></div><div class="resource-value">${int(state.population)}</div><div class="resource-rate">${int(capacity(state))} plazas en casas</div></div>`;$('resourceStrip').innerHTML=html;}
+function renderEvent(){const area=$('eventContainer');if(!state.alive){area.innerHTML=`<section class="event-card"><div class="event-pill">FIN DE PARTIDA</div><h2>El último capítulo</h2><p>${escapeHtml(state.ending)}</p><div class="choices"><button class="choice" id="endNew"><span class="choice-index">✦</span><span class="choice-body"><strong>Empezar una nueva historia</strong><small>Todas las decisiones vuelven a estar abiertas.</small></span><span class="choice-arrow">→</span></button></div></section>`;$('endNew').addEventListener('click',confirmNewGame);return;}
+  const e=eventInfo(state);
+  if(!e){area.innerHTML=state.lastOutcome&&state.lastOutcome.day===state.day?`<section class="event-message"><div class="section-label">EL CONSEJO HA HABLADO</div><h3>La decisión está tomada</h3><p>${escapeHtml(state.lastOutcome.text)}</p></section>`:`<section class="event-message"><div class="section-label">UNA TARDE TRANQUILA</div><h3>Por ahora, hay calma.</h3><p>Usa tus órdenes para levantar edificios o cambiar las prioridades. Cuando estés listo, deja avanzar los días. La aldea no esperará eternamente.</p></section>`;return;}
+  area.innerHTML=`<section class="event-card"><div class="event-header"><span class="event-pill">✦ ${escapeHtml(e.category)}</span><span class="section-label">DÍA ${state.day}</span></div><h2>${escapeHtml(e.title)}</h2><div class="speaker">↳ ${escapeHtml(e.speaker)} informa al consejo</div><p>${escapeHtml(e.text)}</p><div class="choices">${e.choices.map((c,i)=>`<button class="choice" data-choice="${escapeHtml(c.id)}" ${!c.affordable?'disabled':''}><span class="choice-index">${i+1}</span><span class="choice-body"><strong>${escapeHtml(c.label)}</strong><small>${escapeHtml(c.summary)} ${Object.keys(c.cost).length?' · Coste: '+escapeHtml(labelCost(c.cost)):''}${!c.affordable?' · RECURSOS INSUFICIENTES':''}</small></span><span class="choice-arrow">→</span></button>`).join('')}</div></section>`;
+  area.querySelectorAll('[data-choice]').forEach(btn=>btn.addEventListener('click',()=>apply(s=>decide(s,btn.dataset.choice))));
 }
-let s=loadGame();
-function save(){safeSet(SAVE,JSON.stringify(s));}
-
-function choose(eventId,choiceId){
-  const out=E.resolveChoice(s,eventId,choiceId);
-  if(!out.ok){
-    notice=out.error==='NO_ACTIONS'?'El Consejo ya ha agotado sus dos decisiones importantes de hoy.':out.error==='ALREADY_HANDLED'?'Ese asunto ya ha recibido atención hoy.':out.error==='REQUIREMENTS'?'Ahora mismo Bramwood no cumple los requisitos para esa opción.':'Esa decisión ya no está disponible.';
-  }else{s=out.state;notice=out.message||'Decisión registrada.';save();}
-  render();
+function renderVillage(){if(world)world.setState(state);const season=seasonOf(state.day);$('seasonBadge').textContent=`✦ ${season}`;$('timeText').textContent=`Año ${roman(yearOf(state.day))} · Día ${state.day} · ${dayOfSeason(state.day)}/18 de ${season.toLowerCase()}`;$('chapterText').textContent=state.day<19?'Capítulo I · Echar raíces':state.day<55?'Capítulo II · Antes de la nieve':state.day<91?'Capítulo III · Nuevos caminos':'Capítulo IV · Tu legado';$('populationView').textContent=`♟ ${state.population} habitantes`;$('defenseView').textContent=`⚔ Defensa ${state.stats.security}`;$('viewWeather').textContent=`${weatherIcon(weatherForDay(state.day).type)} ${weatherForDay(state.day).type.toUpperCase()} · ${season.toUpperCase()}`;const view=document.querySelector('.village-view');view.classList.toggle('winter',season==='Invierno');view.classList.toggle('autumn',season==='Otoño');view.classList.toggle('has-tower',state.buildings.watch>0);view.classList.toggle('has-wall',state.buildings.palisade>0);
+  const evt=!!state.currentEvent;$('nextDay').disabled=evt||!state.alive;$('skipDays').disabled=evt||!state.alive;$('turnHelp').textContent=!state.alive?'La aldea ha dejado de existir.':evt?'Un acontecimiento espera tu decisión.':`${state.actions} órdenes disponibles · ${state.focus?FOCI[state.focus].name:'-'}`;
+  const d=dailyEstimate(state);$('dailyEstimate').textContent=`Proyección: ${d.food>=0?'+':''}${d.food} comida · ${d.wood>=0?'+':''}${d.wood} madera · ${d.gold>=0?'+':''}${d.gold} coronas / día`;
+  renderEvent();renderResources();
+  $('moodBars').innerHTML=[['morale','Ánimo colectivo'],['security','Defensa de la aldea'],['prosperity','Prosperidad']].map(([k,label])=>{const v=state.stats[k];return `<div class="mood-bar ${v<35?'low':''}"><div class="mood-head"><span>${label}</span><b>${v} / 100</b></div><div class="bar-track"><div class="bar-fill" style="width:${v}%"></div></div></div>`;}).join('');
+  const obj=objective(state);$('objectiveTitle').textContent=obj.title;$('objectiveText').textContent=obj.detail;$('objectiveBar').style.width=`${obj.progress}%`;$('objectivePercent').textContent=`${obj.progress}%`;
+  const messages=[];
+  if(state.population>capacity(state))messages.push(['⌂',`Hay ${state.population-capacity(state)} habitantes sin plaza de vivienda. La moral bajará cada día.`]);
+  if(state.resources.food<35)messages.push(['◈','Las reservas de comida son peligrosamente bajas. Prepara campos o reduce raciones.']);
+  if(season==='Otoño')messages.push(['❄','El invierno comienza en menos de 19 días. La producción agrícola se desplomará.']);
+  if(season==='Invierno')messages.push(['❄','El invierno reduce las cosechas y vuelve el bosque más peligroso.']);
+  if(state.flags.banditTax)messages.push(['⚔','Los bandidos cobran un tributo de dos coronas por día.']);
+  if(state.queued.length)messages.push(['✉',`${state.queued.length} consecuencia(s) pendientes. Los hechos volverán a llamar a tu puerta.`]);
+  messages.push(['♧',`Nivel de amenaza: ${riskLevel(state).toLowerCase()}. La defensa determina la gravedad de algunos ataques.`]);
+  $('whispers').innerHTML=messages.slice(0,5).map(([i,t])=>`<div class="whisper"><span class="whisper-mark">${i}</span><span>${escapeHtml(t)}</span></div>`).join('');
 }
-function endDay(){
-  if(s.actionsLeft>0&&s.active.length){if(!confirm(`Aún te quedan ${s.actionsLeft} decisión${s.actionsLeft===1?'':'es'} de Consejo. Los asuntos abiertos pueden empeorar. ¿Terminar el día?`))return;}
-  const out=E.advanceDay(s);s=out.state;notice=out.notes[0]||'Amanece un nuevo día en Bramwood.';save();render();window.scrollTo({top:0,behavior:'smooth'});
+function roman(n){if(n>20)return String(n);return ['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'][n]||String(n);}
+function renderCouncil(){const enabled=!state.currentEvent&&state.alive&&state.actions>0;$('ordersCount').textContent=`${state.actions} orden${state.actions===1?'':'es'}`;
+  $('focusGrid').innerHTML=Object.entries(FOCI).map(([id,v])=>`<button class="option-row ${state.focus===id?'selected':''}" data-focus="${id}" ${!enabled||state.focus===id?'disabled':''}><span><strong>${escapeHtml(v.name)}</strong><small>${escapeHtml(v.detail)}</small></span><span class="tick">${state.focus===id?'✓':'→'}</span></button>`).join('');
+  $('edictGrid').innerHTML=Object.entries(EDICTS).map(([id,v])=>`<button class="option-row ${state.edict===id?'selected':''}" data-edict="${id}" ${!enabled||state.edict===id?'disabled':''}><span><strong>${escapeHtml(v.name)}</strong><small>${escapeHtml(v.detail)}</small></span><span class="tick">${state.edict===id?'✓':'→'}</span></button>`).join('');
+  $('buildGrid').innerHTML=Object.entries(BUILDINGS).map(([id,b])=>{const count=state.buildings[id];const maxed=count>=b.max;const affordable=Object.entries(b.cost).every(([k,v])=>state.resources[k]>=v);return `<div class="build-card"><div class="build-head"><strong>${escapeHtml(b.name)}</strong><span class="count">${count}/${b.max}</span></div><small>${escapeHtml(b.description)}</small><div class="build-cost">${escapeHtml(labelCost(b.cost))}</div><button data-build="${id}" ${!enabled||!affordable||maxed?'disabled':''}>${maxed?'Completado':affordable?'Construir →':'Faltan recursos'}</button></div>`;}).join('');
+  document.querySelectorAll('[data-focus]').forEach(el=>el.addEventListener('click',()=>apply(s=>setFocus(s,el.dataset.focus))));
+  document.querySelectorAll('[data-edict]').forEach(el=>el.addEventListener('click',()=>apply(s=>setEdict(s,el.dataset.edict))));
+  document.querySelectorAll('[data-build]').forEach(el=>el.addEventListener('click',()=>apply(s=>construct(s,el.dataset.build))));
 }
-function beginProject(id){
-  const out=E.startProject(s,id);
-  if(!out.ok){notice=out.error==='NO_ACTIONS'?'No te quedan decisiones de Consejo hoy.':out.error==='NOT_AFFORDABLE'?'No tienes recursos suficientes para iniciar este proyecto.':out.error==='REQUIREMENTS'?'Todavía no cumples los requisitos para construirlo.':'Ese proyecto no puede iniciarse ahora.';}
-  else{s=out.state;notice=out.message;save();}
-  render();
+function renderPeople(){$('peopleGrid').innerHTML=state.notables.map(p=>`<article class="person-card"><div class="person-head"><div class="person-avatar">${escapeHtml(p.name[0])}</div><div><h3>${escapeHtml(p.name)}</h3><div class="role">${escapeHtml(p.role)}</div></div></div><p>${escapeHtml(p.trait)}</p><div class="person-status"><span>Confianza</span><b>${p.alive?p.trust+'/100':'—'}</b></div><div class="bar-track"><div class="bar-fill" style="width:${p.alive?p.trust:0}%"></div></div><div class="person-status"><span>Salud</span><b>${p.alive?p.health+'/100':'Fallecido'}</b></div><div class="bar-track"><div class="bar-fill" style="width:${p.alive?p.health:0}%"></div></div></article>`).join('');
+  const count=state.notables.filter(p=>p.alive).length;const average=Math.round(state.notables.filter(p=>p.alive).reduce((a,p)=>a+p.trust,0)/(count||1));$('peopleSummary').innerHTML=`<div class="section-label">UNA ALDEA DE PERSONAS</div><h3>${state.population} vecinos · ${count} figuras conocidas</h3><p>Confianza media en el consejo: <strong>${average}/100</strong>. El resto de los habitantes vive y trabaja fuera del consejo; el hambre, la vivienda y la seguridad también afectan a sus vidas.</p>`;
 }
-
-function statBar(){return [
-  ['👥',s.pop,'Habitantes'],['🌾',s.food,'Comida'],['🪵',s.wood,'Madera'],['🪙',s.coin,'Monedas']
-].map(x=>`<div class="stat"><b>${x[0]} ${x[1]}</b><span>${x[2]}</span></div>`).join('');}
-function urgencyClass(u){return /Crítico/.test(u)?'critical':/Urgente|Serio/.test(u)?'urgent':/Buen/.test(u)?'good':'';}
-const urgencyRank={'Crítico':0,'Urgente':1,'Serio':2,'Tensión':3,'Política':4,'Interno':5,'Nuevo':6,'Misterio':7,'Estacional':8,'Oportunidad':9,'Información':10,'Personal':11,'Cotidiano':12,'Buen augurio':13,'Legado':14,'Social':15,'Economía':16,'Exploración':17,'Consecuencia':18,'Decisión':19};
-
-function council(){
-  const cap=`<div class="council-cap"><div><span>⚖️ CONSEJO</span><small>decisiones importantes disponibles</small></div><b>${s.actionsLeft}/${s.actionsMax}</b></div>`;
-  const alerts=[];
-  if(notice)alerts.push(`<div class="notice">${esc(notice)}</div>`);
-  const dailyNeed=Math.max(2,Math.ceil(s.pop/9))+(s.season==='Invierno'?1:0);
-  if(s.food<=dailyNeed*3)alerts.push('<div class="notice danger-note">⚠️ Las reservas de comida están peligrosamente bajas.</div>');
-  if(s.pop>E.housingCapacity(s))alerts.push('<div class="notice danger-note">🏚️ Hay más habitantes que capacidad de vivienda.</div>');
-  if(s.ending)alerts.push(`<div class="notice ending"><b>${esc(s.ending.title)}</b><br>${esc(s.ending.text)}</div>`);
-  const ids=[...s.active].sort((a,b)=>(urgencyRank[E.EVENTS[a]?.urg]??99)-(urgencyRank[E.EVENTS[b]?.urg]??99));
-  const cards=ids.map(id=>{
-    const e=E.getEventView(s,id); if(!e)return'';
-    const handled=e.handledToday,noActions=s.actionsLeft<=0;
-    const remain=e.deadline?Math.max(0,e.deadline.days-e.nightsOpen):null;
-    const timing=e.deadline?`<span class="deadline">⏳ ${remain===0?'esta noche':`en ${remain} noche${remain===1?'':'s'}`}</span>`:'';
-    return `<section class="card event-card ${urgencyClass(e.urg)}">
-      <div class="event-top"><div><span class="eyebrow">${esc(e.urg)}${e.chain?` · ${esc(e.chain)}`:''}</span><span class="age">${e.age?`abierto ${e.age}d`:'nuevo hoy'}</span></div>${timing}</div>
-      <h2>${esc(e.title)}</h2><p>${esc(e.text)}</p>
-      ${handled?'<div class="handled">✓ Ya has atendido este asunto hoy.</div>':''}
-      <div class="choices">${e.choices.map(ch=>{const dis=noActions||handled||!ch.available;return `<button class="choice ${!ch.available?'locked':''}" ${dis?'disabled':''} onclick="choose('${id}','${ch.id}')"><b>${esc(ch.label)}</b><small>${esc(ch.desc)}${!ch.available?' · 🔒 No disponible ahora':''}</small></button>`}).join('')}</div>
-    </section>`;
-  }).join('');
-  const empty=ids.length?'':'<div class="card quiet"><div class="big-icon">🌲</div><h2>Bramwood respira tranquila</h2><p>No hay asuntos activos. Puedes dedicar el día a proyectos o dejar que el tiempo avance.</p></div>';
-  return cap+alerts.join('')+empty+cards+`<button class="end-day" onclick="endDay()"><b>☾ Terminar el día</b><span>La aldea producirá, consumirá y los asuntos abiertos avanzarán.</span></button>`;
+function renderChronicle(){$('journalList').innerHTML=state.journal.map(entry=>`<div class="journal-entry"><div class="journal-time">AÑO ${roman(yearOf(entry.day))}<div>DÍA ${entry.day}</div></div><div><h4>${escapeHtml(entry.title)}</h4><p>${escapeHtml(entry.text)}</p></div></div>`).join('');$('legacyTitle').textContent=endingDescription(state);$('achievementList').innerHTML=achievements(state).map(a=>`<div class="achievement ${a.done?'done':''}"><span>${a.done?'✦':'◇'}</span><span>${escapeHtml(a.title)}</span></div>`).join('');
+  const series=state.history.slice(-45);const max=Math.max(120,...series.map(x=>x.food));const points=series.map((x,i)=>`${10+i*(280/Math.max(1,series.length-1))},${120-(x.food/max)*105}`).join(' ');const morale=series.map((x,i)=>`${10+i*(280/Math.max(1,series.length-1))},${120-(x.morale/100)*105}`).join(' ');$('chartArea').innerHTML=`<svg class="chart-svg" viewBox="0 0 310 140" role="img" aria-label="Evolución de comida y moral"><path d="M10 15V120H300" stroke="#536b52" fill="none" stroke-width="1"/><path d="M10 67H300" stroke="#536b52" fill="none" stroke-dasharray="3 5"/><polyline points="${points}" fill="none" stroke="#e9c680" stroke-width="3" stroke-linejoin="round"/><polyline points="${morale}" fill="none" stroke="#8fcaa1" stroke-width="2.3" stroke-linejoin="round"/></svg><div class="chart-note">— <span style="color:#e9c680">Comida</span> &nbsp; — <span style="color:#8fcaa1">Moral</span> · últimos ${series.length} días</div>`;
 }
-
-function meter(label,value,cls=''){return `<div class="metric-row"><span>${label}</span><b>${value}/100</b></div><div class="meter ${cls}"><i style="width:${Math.max(0,Math.min(100,value))}%"></i></div>`;}
-function factionLabel(v){return v>=50?'Aliada':v>=20?'Amistosa':v>=5?'Cordial':v>-10?'Neutral':v>-30?'Tensa':'Hostil';}
-function village(){
-  const buildingCards=Object.entries(s.buildings).map(([id,b])=>`<div class="building"><div class="building-icon">${id==='well'?'💧':id==='palisade'?'🛡️':id==='market'?'⚖️':id==='infirmary'?'✚':id==='fields'?'🌾':id==='homes'?'🏠':'🔨'}</div><div><b>${esc(b.name)}</b><small>${esc(b.desc||'')}</small></div><span>Nv. ${b.level||1}</span></div>`).join('');
-  const facs=Object.entries(s.factions).map(([id,f])=>`<div class="faction"><div><b>${esc(f.name)}</b><small>${esc(f.desc)}</small></div><span class="attitude ${f.attitude< -10?'bad':f.attitude>=20?'goodtext':''}">${f.attitude>0?'+':''}${f.attitude} · ${factionLabel(f.attitude)}</span></div>`).join('');
-  return `<section class="card settlement"><div class="eyebrow">Estado de la aldea</div><h2>Bramwood</h2><p class="weather">${esc(s.weather)} · Día ${s.seasonDay} de ${s.season}, Año ${s.year}</p>
-    ${meter('Moral',s.morale)}${meter('Seguridad',s.safety,'security')}
-    <div class="resource-grid"><div><span>💊 Medicina</span><b>${s.medicine}</b></div><div><span>🛠️ Herramientas</span><b>${s.tools}</b></div><div><span>🏷️ Reputación</span><b>${s.reputation}</b></div><div><span>🏠 Vivienda</span><b>${s.pop}/${E.housingCapacity(s)}</b></div></div>
-  </section>
-  <section class="card"><div class="eyebrow">Infraestructura</div><h2>Lo que habéis construido</h2><div class="building-list">${buildingCards}</div></section>
-  <section class="card"><div class="eyebrow">Mundo exterior</div><h2>Relaciones</h2>${facs}</section>
-  ${s.milestones.length?`<section class="card"><div class="eyebrow">Legado</div><h2>Hitos</h2><div class="milestones">${s.milestones.map(m=>`<span>${esc(m.replaceAll('_',' '))}</span>`).join('')}</div></section>`:''}`;
+function weatherIcon(name){return {Despejado:'☀',Nublado:'☁',Lluvia:'☂',Nevada:'❄',Viento:'☷'}[name]||'☀';}
+function showMapSelection(item){const target=$('mapSelection'),title=$('mapSelectionTitle'),detail=$('mapSelectionDetail'),symbol=$('mapSelectionIcon'),btn=$('mapSelectionButton');target.classList.toggle('selected',!!item);btn.hidden=true;
+ if(!item){title.textContent='Conoce tu aldea';detail.textContent='Selecciona un edificio, camino o habitante. La aldea crece contigo.';symbol.textContent='⌂';return;}
+ if(item.type==='building'){const b=BUILDINGS[item.id];symbol.textContent=({farm:'❀',houses:'⌂',lumber:'♧',quarry:'◆',watch:'♜',granary:'◈',market:'✦',infirmary:'✚',palisade:'⚔'})[item.id];title.textContent=`${item.name} · ${item.level}/${state.buildings[item.id]}`;detail.textContent=b.description;btn.hidden=false;btn.textContent='Ver construcciones →';}
+ else if(item.type==='person'){symbol.textContent='♟';title.textContent=item.name;const notable=state.notables.find(n=>n.name===item.name);detail.textContent=`${item.role}${notable?` · Confianza ${notable.trust}/100 · Salud ${notable.health}/100`:''}`;}
+ else{symbol.textContent='◇';title.textContent=item.name;detail.textContent=item.name==='Río de Bram'?'El agua cruza las tierras al este. Las estaciones transforman su cauce.':item.name.startsWith('Camino')?'Los senderos unen los hogares, talleres y campos del asentamiento.':'Bosques y claros rodean Bramwood. Los árboles pueden protegerse o talarse.';}
 }
-
-function costLine(cost){const icons={food:'🌾',wood:'🪵',coin:'🪙',medicine:'💊',tools:'🛠️'};return Object.entries(cost||{}).map(([k,v])=>`${icons[k]||k} ${v}`).join(' · ');}
-function projects(){
-  const active=s.projects.map(pr=>{const p=E.PROJECTS[pr.id];return `<div class="project active-project"><div><span class="eyebrow">En construcción</span><h3>${esc(p.name)}</h3><p>${esc(p.desc)}</p></div><div class="due">${Math.max(0,pr.dueDay-s.day)}d</div></div>`}).join('');
-  const cards=Object.values(E.PROJECTS).map(p=>{const v=E.projectView(s,p.id); if(v.built&&!p.repeatable)return `<div class="project built"><div><span class="eyebrow">Completado</span><h3>${esc(p.name)}</h3><p>${esc(p.desc)}</p></div><span>✓</span></div>`;
-    const disabled=!v.available||!v.affordable||s.actionsLeft<=0||v.active;
-    return `<div class="project"><div><span class="eyebrow">${p.days} días base</span><h3>${esc(p.name)}</h3><p>${esc(p.desc)}</p><div class="cost">${costLine(p.cost)}</div>${!v.available?'<small class="locktext">🔒 Requisito narrativo o de infraestructura pendiente.</small>':''}</div><button ${disabled?'disabled':''} onclick="beginProject('${p.id}')">Construir</button></div>`;
-  }).join('');
-  return `${notice?`<div class="notice">${esc(notice)}</div>`:''}<div class="card project-head"><div><span class="eyebrow">Obras</span><h2>Proyectos de Bramwood</h2><p>Iniciar una obra consume una decisión de Consejo. Tomas reduce en un día la duración mientras pueda trabajar.</p></div><b>${s.actionsLeft}/${s.actionsMax}</b></div>${active?`<section class="card"><div class="eyebrow">En marcha</div>${active}</section>`:''}<section class="card"><div class="eyebrow">Disponibles</div><div class="project-list">${cards}</div></section>`;
+function renderDayRecap(before,result){if(!before||state.day===before.day)return;const output=$('daySummary');const diff=[...Object.keys(state.resources),'population'].map(k=>{const a=k==='population'?before.population:before.resources[k],b=k==='population'?state.population:state.resources[k];const d=b-a;return d===0?'':`<span class="recap-stat ${d<0?'loss':'gain'}">${escapeHtml(RESOURCE_NAMES[k]||'Habitantes')}: ${d>0?'+':''}${d}</span>`;}).filter(Boolean);
+ const fresh=state.journal.filter(j=>!before.journal.includes(j.day+':'+j.title)).slice(0,2);output.hidden=false;output.innerHTML=`<div class="recap-head"><strong>☼ Amanecer del día ${state.day}</strong><button class="recap-close" type="button" title="Ocultar resumen" aria-label="Ocultar resumen">×</button></div><div class="recap-stats">${diff.join('')||'<span>Sin cambios relevantes en las reservas</span>'}</div><p>${result.progressed>1?`Han pasado ${result.progressed} días. `:''}${fresh.length?escapeHtml(fresh.map(j=>j.text).join(' · ')):escapeHtml(`La aldea continúa su vida. ${state.currentEvent?'El consejo debe atender un nuevo acontecimiento.':'Puedes preparar el próximo día.'}`)}</p>`;output.querySelector('.recap-close').addEventListener('click',()=>{output.hidden=true;});}
+function render(){renderVillage();renderCouncil();renderPeople();renderChronicle();if(world&&world.selected)showMapSelection(world.selected);}
+function download(name,content,mime='application/json'){const blob=new Blob([content],{type:mime});const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=name;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(link.href),1500);}
+function confirmNewGame(){if(!confirm('¿Empezar otra historia? La partida actual se sustituirá. Exporta antes la partida si quieres conservarla.'))return;state=newGame();save();render();setTab('aldea');if($('settingsDialog').open)$('settingsDialog').close();notify('Una nueva historia empieza en Bramwood.');}
+function setup(){state=openSave();world=new VillageWorld($('worldCanvas'),{onSelect:showMapSelection,onWeather:()=>{}});render();$('zoomIn').addEventListener('click',()=>world.zoom(1.2));$('zoomOut').addEventListener('click',()=>world.zoom(1/1.2));$('zoomHome').addEventListener('click',()=>world.home());$('mapSelectionButton').addEventListener('click',()=>setTab('consejo'));$('tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)setTab(b.dataset.tab);});$('nextDay').addEventListener('click',()=>apply(s=>advance(s,1)));$('skipDays').addEventListener('click',()=>apply(s=>advance(s,7)));$('settingsBtn').addEventListener('click',()=>$('settingsDialog').showModal());$('closeSettings').addEventListener('click',()=>$('settingsDialog').close());$('newGame').addEventListener('click',confirmNewGame);$('exportSave').addEventListener('click',()=>{download(`bramwood-partida-dia-${state.day}.json`,JSON.stringify(state,null,2));notify('Partida exportada.');});$('importSave').addEventListener('click',()=>$('importInput').click());$('importInput').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{if(f.size>3000000)throw Error('El archivo es demasiado grande.');const imported=validateSave(JSON.parse(await f.text()));if(!confirm(`¿Cargar la partida del día ${imported.day}? Sustituirá la partida actual.`))return;state=imported;save();render();$('settingsDialog').close();setTab('aldea');notify('Partida importada.');}catch(err){notify('No se pudo importar: '+err.message);}finally{e.target.value='';}});
+  $('exportChronicle').addEventListener('click',()=>{const text=['BRAMWOOD — CRÓNICA DE UNA ALDEA',`Año ${yearOf(state.day)} · Día ${state.day}`,endingDescription(state),'',...state.journal.slice().reverse().map(j=>`Día ${j.day} · ${j.title}\n${j.text}\n`)].join('\n');download(`bramwood-cronica-dia-${state.day}.txt`,text,'text/plain;charset=utf-8');notify('Crónica exportada.');});
+  window.addEventListener('keydown',e=>{if(e.target.matches('input, textarea, select')||$('settingsDialog').open)return;if(state.currentEvent&&['1','2','3'].includes(e.key)){const btn=document.querySelectorAll('[data-choice]')[Number(e.key)-1];if(btn&&!btn.disabled)btn.click();}});
+  if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
-
-function people(){
-  const named=s.people.map(p=>`<div class="person ${p.alive===false?'dead':''}"><div class="avatar">${p.alive===false?'✝':'●'}</div><div><b>${esc(p.name)}</b><small>${esc(p.role)} · ${esc(p.trait)}</small></div><span>${esc(p.status||'Bien')}</span></div>`).join('');
-  const homes=s.households.map(h=>`<div class="household"><div><b>${esc(h.name)}</b><small>${esc(h.work||'')}</small></div><span>${(h.adults||0)+(h.children||0)} personas</span></div>`).join('');
-  return `<section class="card"><div class="eyebrow">Personas clave</div><h2>Vidas que importan</h2><p>Sus estados pueden abrir, cambiar o cerrar decisiones futuras.</p>${named}</section><section class="card"><div class="eyebrow">Hogares</div><h2>Familias de Bramwood</h2>${homes}</section>`;
-}
-
-function chronicle(){
-  const stats=E.contentStats();
-  return `<section class="card"><div class="eyebrow">La memoria de la aldea</div><h2>Crónica</h2>${s.history.slice(0,120).map(x=>`<div class="log">${esc(x)}</div>`).join('')}</section>
-  <section class="card"><div class="eyebrow">Esta versión</div><div class="content-stats"><div><b>${stats.events}</b><span>eventos</span></div><div><b>${stats.choices}</b><span>decisiones</span></div><div><b>${stats.projects}</b><span>proyectos</span></div><div><b>${stats.chains}</b><span>líneas</span></div></div></section>
-  <section class="card"><div class="eyebrow">Partida</div><h3>Guardar fuera del navegador</h3><p>La partida se guarda automáticamente. Exportarla te permite moverla a otro dispositivo o conservarla antes de una actualización.</p><div class="button-row"><button onclick="exportSave()">Exportar</button><button onclick="q('importFile').click()">Importar</button></div><input id="importFile" type="file" accept="application/json,.json" hidden onchange="importSave(event)"><button class="danger wide" onclick="resetGame()">Nueva partida</button></section>
-  <section class="card install"><div class="eyebrow">iPhone</div><h3>Instalar Bramwood</h3><p>En Safari: <b>Compartir → Añadir a pantalla de inicio</b>. Después se abre a pantalla completa y funciona también sin conexión tras la primera carga.</p></section>`;
-}
-
-function exportSave(){const blob=new Blob([JSON.stringify(s,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`bramwood-dia-${s.day}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
-async function importSave(ev){const file=ev.target.files?.[0];if(!file)return;const p=E.importState(await file.text());if(p.ok){s=p.state;notice='Partida importada correctamente.';save();}else notice='Ese archivo no parece una partida válida de Bramwood.';ev.target.value='';render();}
-function resetGame(){if(!confirm('¿Comenzar una nueva historia? La partida actual seguirá existiendo solo si antes la exportas.'))return;s=E.createBaseState(Date.now());notice='Una nueva crónica comienza en Bramwood.';LEGACY.forEach(safeRemove);save();tab='council';render();}
-function switchTab(t){tab=t;notice='';render();window.scrollTo({top:0,behavior:'smooth'});}
-
-function render(){
-  const cal=`Día ${s.day} · ${s.season}, Año ${s.year}`;
-  q('dateLine').textContent=cal;q('weatherLine').textContent=s.weather;q('stats').innerHTML=statBar();
-  const views={council, village, projects, people, chronicle};q('app').innerHTML=views[tab]();
-  document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));
-  q('eventBadge').textContent=s.active.length;q('eventBadge').classList.toggle('hidden',!s.active.length);
-}
-window.choose=choose;window.endDay=endDay;window.beginProject=beginProject;window.exportSave=exportSave;window.importSave=importSave;window.resetGame=resetGame;window.switchTab=switchTab;window.q=q;
-if('serviceWorker'in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('./sw.js').catch(()=>{});
-render();
+setup();

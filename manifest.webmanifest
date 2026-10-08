@@ -1,15 +1,1 @@
-{
-  "name":"Bramwood",
-  "short_name":"Bramwood",
-  "description":"Una aldea viva que recuerda tus decisiones.",
-  "start_url":"./",
-  "scope":"./",
-  "display":"standalone",
-  "orientation":"portrait-primary",
-  "background_color":"#0b0e0b",
-  "theme_color":"#101510",
-  "icons":[
-    {"src":"./icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"./icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
-  ]
-}
+{"name":"Bramwood — The Living World · v0.5","short_name":"Bramwood","description":"Estrategia narrativa con mapa isométrico animado y una aldea viva","start_url":"./","scope":"./","display":"standalone","background_color":"#102019","theme_color":"#11251d","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}

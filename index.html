@@ -1,19 +1,70 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<meta name="theme-color" content="#101510"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Bramwood"><meta name="mobile-web-app-capable" content="yes">
-<title>Bramwood</title><meta name="description" content="Una aldea viva que recuerda tus decisiones.">
-<link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icons/icon-192.png" sizes="192x192"><link rel="apple-touch-icon" href="./icons/apple-touch-icon.png"><link rel="stylesheet" href="./styles.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#11251d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="Bramwood: una aldea viva donde cada decisión deja huella. Estrategia, personajes, invierno y consecuencias." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <title>Bramwood — The Living World · v0.5</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<div class="shell"><header><div class="crest">♜</div><h1>BRAMWOOD</h1><div class="date" id="dateLine"></div><div class="weatherline" id="weatherLine"></div></header><div class="topstats" id="stats"></div><main id="app"></main></div>
-<nav class="bottomnav"><div class="bottomnav-inner">
-<button class="navbtn active" data-tab="council" onclick="switchTab('council')"><i>⚖️</i><span>Consejo</span><span class="badge" id="eventBadge"></span></button>
-<button class="navbtn" data-tab="village" onclick="switchTab('village')"><i>🏘️</i><span>Aldea</span></button>
-<button class="navbtn" data-tab="projects" onclick="switchTab('projects')"><i>🔨</i><span>Proyectos</span></button>
-<button class="navbtn" data-tab="people" onclick="switchTab('people')"><i>👥</i><span>Gente</span></button>
-<button class="navbtn" data-tab="chronicle" onclick="switchTab('chronicle')"><i>📜</i><span>Crónica</span></button>
-</div></nav>
-<script src="./content.js"></script><script src="./engine.js"></script><script src="./app.js"></script>
-</body></html>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark" aria-hidden="true">✧</div><div><div class="brand-name">BRAMWOOD</div><div class="brand-caption">THE LIVING WORLD · V0.5</div></div></div>
+      <div class="top-controls"><span id="save-status" class="save-status">● Guardado local</span><button class="icon-button" id="settingsBtn" aria-label="Abrir partida y opciones" title="Partida y opciones">⚙</button></div>
+    </header>
+    <section class="masthead">
+      <div class="masthead-top"><span class="eyebrow">UNA HISTORIA QUE CAMBIA CONTIGO</span><span id="seasonBadge" class="season-badge">✦ Primavera</span></div>
+      <h1>Tu aldea. <em>Tu legado.</em></h1>
+      <p>Cada invierno pesa. Cada vecino recuerda. No hay una única forma de salvar Bramwood.</p>
+      <div class="time-bar"><span id="timeText">Año I · Día 1</span><span id="chapterText">Capítulo I · Echar raíces</span></div>
+    </section>
+    <div class="resource-strip" id="resourceStrip" aria-label="Recursos de la aldea"></div>
+    <nav class="tabs" id="tabs" aria-label="Vistas del juego">
+      <button class="tab active" data-tab="aldea" aria-current="page">⌂ <span>Aldea</span></button>
+      <button class="tab" data-tab="consejo">⚒ <span>Consejo</span></button>
+      <button class="tab" data-tab="vecinos">♟ <span>Vecinos</span></button>
+      <button class="tab" data-tab="cronica">☷ <span>Crónica</span></button>
+    </nav>
+    <main>
+      <div id="aldea" class="tab-content active">
+        <div class="two-column">
+          <div class="primary-column">
+            <section class="world-section" aria-label="Mapa interactivo de Bramwood">
+              <div class="world-section-head"><div><div class="section-label">EL MUNDO ESTÁ VIVO · V0.5</div><h2>Desde el corazón del bosque</h2></div><span class="world-signal"><span class="live-dot"></span> MUNDO EN MOVIMIENTO</span></div>
+              <div class="village-view" id="villageView">
+                <canvas id="worldCanvas" class="world-canvas" role="img" aria-label="Mapa isométrico interactivo de Bramwood, con edificios, caminos, árboles y habitantes. Pulsa un edificio o una persona para inspeccionarlo.">Tu navegador no admite mapas Canvas.</canvas>
+                <div class="village-overlay"><span class="village-tag">✦ TERRITORIO DE BRAMWOOD</span><span id="viewWeather">☀ Despejado</span></div>
+                <div class="map-controls" aria-label="Controles del mapa"><button type="button" id="zoomIn" title="Acercar mapa" aria-label="Acercar mapa">+</button><button type="button" id="zoomOut" title="Alejar mapa" aria-label="Alejar mapa">−</button><button type="button" id="zoomHome" title="Centrar mapa" aria-label="Centrar mapa">⌖</button></div>
+                <div class="village-legend"><span id="populationView">♟ 18 habitantes</span><span id="defenseView">⚔ Defensa 20</span></div>
+                <div class="map-instruction">Arrastra para explorar · Toca para inspeccionar · Pellizca para ampliar</div>
+              </div>
+              <div class="map-selection" id="mapSelection" aria-live="polite"><div class="selection-symbol" id="mapSelectionIcon">⌂</div><div class="selection-text"><strong id="mapSelectionTitle">Conoce tu aldea</strong><span id="mapSelectionDetail">Selecciona un edificio, camino o habitante. La aldea crece contigo.</span></div><button id="mapSelectionButton" type="button" class="selection-action" hidden>Ver en consejo →</button></div>
+              <div class="day-recap" id="daySummary" hidden aria-live="polite"></div>
+            </section>
+            <section id="eventContainer" class="event-area" aria-live="polite"></section>
+            <section class="day-controls panel"><div><div class="section-label">EL TIEMPO NO SE DETIENE</div><strong id="turnHelp">Resuelve primero la decisión pendiente.</strong><small id="dailyEstimate">Proyección diaria</small></div><div class="turn-buttons"><button id="nextDay" class="action-button">Siguiente día <span>→</span></button><button id="skipDays" class="secondary-button" title="Avanzar hasta 7 días; se detiene ante cualquier evento">Hasta 7 días »</button></div></section>
+          </div>
+          <aside class="side-column">
+            <section class="panel mood-panel"><div class="section-label">EL PULSO DE LA ALDEA</div><div id="moodBars"></div></section>
+            <section class="panel objective-panel"><div class="section-label">EL PRÓXIMO HITO</div><h3 id="objectiveTitle">Echar raíces</h3><p id="objectiveText">Sobrevive y asegura comida para la aldea.</p><div class="progress-track"><div id="objectiveBar" class="progress-fill"></div></div><div id="objectivePercent" class="right-caption">0%</div></section>
+            <section class="panel whispers-panel"><div class="section-label">SUSURROS Y AMENAZAS</div><div id="whispers"></div></section>
+          </aside>
+        </div>
+      </div>
+      <div id="consejo" class="tab-content"><div class="page-heading"><div><div class="section-label">EL PRECIO DE GOBERNAR</div><h2>El consejo de Bramwood</h2><p>Dos órdenes por día. Construir, reorganizar el trabajo o cambiar las raciones consume una orden.</p></div><span class="orders" id="ordersCount">2 órdenes</span></div><div class="council-columns"><section class="panel"><div class="section-label">DÓNDE TRABAJA LA ALDEA</div><h3>Prioridad de trabajo</h3><div id="focusGrid" class="option-list"></div><div class="section-label spaced">EL PAN DE CADA DÍA</div><h3>Política alimentaria</h3><div id="edictGrid" class="option-list"></div></section><section class="panel"><div class="section-label">UN POBLADO SE LEVANTA PIEDRA A PIEDRA</div><h3>Construcciones</h3><div id="buildGrid" class="build-grid"></div></section></div></div>
+      <div id="vecinos" class="tab-content"><div class="page-heading"><div><div class="section-label">NO SON SOLO NÚMEROS</div><h2>Las personas de Bramwood</h2><p>Las decisiones afectan su confianza. Algunos estarán contigo en los momentos difíciles. Otros recordarán lo que hiciste.</p></div></div><div id="peopleGrid" class="people-grid"></div><section class="panel people-summary" id="peopleSummary"></section></div>
+      <div id="cronica" class="tab-content"><div class="page-heading"><div><div class="section-label">NADA SE BORRA DEL TODO</div><h2>Crónica de Bramwood</h2><p>Registros del consejo, acontecimientos, pérdidas y victorias. Cada partida escribe una historia distinta.</p></div><button class="secondary-button" id="exportChronicle">Exportar crónica ↧</button></div><div class="two-column"><section class="panel"><div class="section-label">EL LIBRO DE LOS DÍAS</div><div id="journalList" class="journal"></div></section><aside class="side-column"><section class="panel"><div class="section-label">LEGADO</div><h3 id="legacyTitle">Una historia por escribir</h3><div id="achievementList"></div></section><section class="panel"><div class="section-label">EVOLUCIÓN DE LAS RESERVAS</div><div id="chartArea"></div></section></aside></div></div>
+    </main>
+    <footer><span>BRAMWOOD · THE LIVING WORLD · V0.5</span><span>Sin anuncios · Sin cuentas · Sin servidores</span></footer>
+  </div>
+  <dialog id="settingsDialog" class="settings-dialog"><div class="dialog-header"><div><div class="section-label">TU PARTIDA</div><h2>Archivo del consejo</h2></div><button id="closeSettings" class="icon-button" aria-label="Cerrar">×</button></div><p>El progreso se guarda en este dispositivo. Exporta la partida si quieres conservarla al cambiar de navegador o teléfono.</p><div class="dialog-actions"><button id="exportSave" class="action-button">Exportar partida ↓</button><button id="importSave" class="secondary-button">Importar partida ↑</button><input id="importInput" type="file" accept=".json,application/json" hidden /><button id="newGame" class="danger-button">Empezar otra historia</button></div><small>La partida nueva sustituye la guardada. Las partidas antiguas de otras versiones no se mezclan automáticamente.</small></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
