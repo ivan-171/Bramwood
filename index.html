@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#101510"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Bramwood"><meta name="mobile-web-app-capable" content="yes">
+<title>Bramwood</title><meta name="description" content="Una aldea viva que recuerda tus decisiones.">
+<link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icons/icon-192.png" sizes="192x192"><link rel="apple-touch-icon" href="./icons/apple-touch-icon.png"><link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="shell"><header><div class="crest">♜</div><h1>BRAMWOOD</h1><div class="date" id="dateLine"></div><div class="weatherline" id="weatherLine"></div></header><div class="topstats" id="stats"></div><main id="app"></main></div>
+<nav class="bottomnav"><div class="bottomnav-inner">
+<button class="navbtn active" data-tab="council" onclick="switchTab('council')"><i>⚖️</i><span>Consejo</span><span class="badge" id="eventBadge"></span></button>
+<button class="navbtn" data-tab="village" onclick="switchTab('village')"><i>🏘️</i><span>Aldea</span></button>
+<button class="navbtn" data-tab="projects" onclick="switchTab('projects')"><i>🔨</i><span>Proyectos</span></button>
+<button class="navbtn" data-tab="people" onclick="switchTab('people')"><i>👥</i><span>Gente</span></button>
+<button class="navbtn" data-tab="chronicle" onclick="switchTab('chronicle')"><i>📜</i><span>Crónica</span></button>
+</div></nav>
+<script src="./content.js"></script><script src="./engine.js"></script><script src="./app.js"></script>
+</body></html>
